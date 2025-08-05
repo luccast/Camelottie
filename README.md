@@ -7,16 +7,19 @@ A Node.js script for batch image optimization that resizes and compresses PNG fi
 - **Batch Processing**: Processes all PNG files in the input directory
 - **Smart Resizing**: Reduces images to 33% of original size using Sharp
 - **High Compression**: Uses imagemin with pngquant for optimal PNG compression
+- **Lottie Animation**: Automatically generates Lottie JSON from frame sequence
 - **Excellent Results**: Achieves up to 96% file size reduction
 - **Preserves Quality**: Maintains visual quality while dramatically reducing file size
+- **Web-Ready Output**: Creates both optimized PNGs and Lottie animation for web use
 
 ## 📊 Performance
 
 In testing with 121 frame images:
-- **Input**: 116MB total
-- **Output**: 4.5MB total  
-- **Compression**: 96% size reduction
+- **Input**: 116MB total (PNG frames)
+- **Output**: 4.5MB total (optimized PNGs) + 100KB (Lottie JSON)
+- **Compression**: 96% size reduction on images
 - **Individual files**: ~986KB → ~36KB per image
+- **Lottie specs**: 356×425px, 12fps, 10.1s duration, frame-by-frame animation
 
 ## 🛠️ Installation
 
@@ -58,16 +61,38 @@ optimize-frames/
 node optimize.js
 ```
 
-3. **Check results**: Find optimized images in the `output/` directory
+3. **Check results**: Find optimized images and Lottie animation in the `output/` directory
+   - `00000000.png` to `00000120.png` - Optimized frame images
+   - `animation.json` - Lottie animation file
+
+### 🎬 Using the Lottie Animation
+
+The generated `animation.json` can be used in web applications:
+
+**HTML with Lottie Web Player:**
+```html
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<lottie-player src="output/animation.json" background="transparent" speed="1" loop autoplay></lottie-player>
+```
+
+**React with lottie-react:**
+```jsx
+import Lottie from 'lottie-react';
+import animationData from './output/animation.json';
+
+<Lottie animationData={animationData} loop={true} />
+```
 
 ## ⚙️ Configuration
 
 You can modify these settings in `optimize.js`:
 
 ```javascript
-const inputDir = "input";       // Input directory path
-const outputDir = "output";     // Output directory path  
-const outputFormat = "png";     // Output format ("png" or "webp")
+const inputDir = "input";              // Input directory path
+const outputDir = "output";            // Output directory path  
+const outputFormat = "png";            // Output format ("png" or "webp")
+const shouldCreateLottie = true;       // Generate Lottie animation (true/false)
+const frameRate = 12;                  // Animation frame rate (fps)
 ```
 
 ### Resize Factor
@@ -116,11 +141,13 @@ PNG compression uses pngquant with quality range 0.6-0.8:
 ## 🎨 Use Cases
 
 Perfect for:
-- Animation frame sequences
+- Animation frame sequences → Lottie animations
 - Sprite sheets optimization
 - Batch image processing for web
-- Reducing storage requirements
-- Preparing images for deployment
+- Creating web-ready animations from image sequences
+- Reducing storage requirements while maintaining animation quality
+- Converting video frames to lightweight web animations
+- Preparing optimized assets for deployment
 
 ## 📝 Output
 
@@ -130,6 +157,9 @@ Processed 00000000.png -> output/00000000.png
 Processed 00000001.png -> output/00000001.png
 ...
 ✅ All images processed.
+🎬 Creating Lottie animation...
+🎬 Lottie animation created: output/animation.json
+📊 Animation specs: 356x425, 121 frames, 12fps, 10.1s duration
 ```
 
 ## 🤝 Contributing
