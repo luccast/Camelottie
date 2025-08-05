@@ -4,14 +4,14 @@ const path = require("path");
 const sharp = require("sharp");
 
 const inputDir = "input";       // Folder with original PNGs
-const outputDir = "output";     // Compressed and resized output
+const outputDir = "output/frames";     // Compressed and resized output
 const outputFormat = "png";    // Changed to PNG to avoid WebP dependency issues
 const shouldCreateLottie = true;  // Set to true to generate Lottie animation
 const selfContainedLottie = true; // Set to true for embedded images, false for external files
 
 // Lottie Animation Settings
 const lottieFrameRate = 30;       // Animation frame rate (fps) - 12, 24, 30, 60 are common
-const lottieWidth = null;          // Custom width (null = use optimized image width)
+const lottieWidth = 280;          // Custom width (null = use optimized image width)
 const lottieHeight = null;        // Custom height (null = use optimized image height)
 const maintainAspectRatio = true; // Keep aspect ratio when scaling dimensions
 
