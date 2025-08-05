@@ -7,6 +7,7 @@ const inputDir = "input";       // Folder with original PNGs
 const outputDir = "output";     // Compressed and resized output
 const outputFormat = "png";    // Changed to PNG to avoid WebP dependency issues
 const shouldCreateLottie = true;  // Set to true to generate Lottie animation
+const selfContainedLottie = true; // Set to true for embedded images, false for external files
 
 async function processImages() {
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
@@ -93,20 +94,39 @@ async function createLottieAnimation(files) {
   };
 
   // Add each PNG as an asset
-  files.forEach((file, index) => {
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index];
     const baseName = path.parse(file).name;
     const assetId = `image_${index}`;
+    const imagePath = path.join(outputDir, `${baseName}.png`);
     
-    // Add to assets array
-    lottieData.assets.push({
-      id: assetId,
-      w: width,
-      h: height,
-      u: "", // Base path (empty since files are in same directory)
-      p: `${baseName}.png`, // File path
-      e: 0 // Embedded (0 = external file)
-    });
-  });
+    if (selfContainedLottie) {
+      // Read and encode image as base64
+      const imageBuffer = fs.readFileSync(imagePath);
+      const base64Data = imageBuffer.toString('base64');
+      const dataUri = `data:image/png;base64,${base64Data}`;
+      
+      // Add embedded asset to array
+      lottieData.assets.push({
+        id: assetId,
+        w: width,
+        h: height,
+        u: "", // Base path (empty for embedded)
+        p: dataUri, // Base64 data URI
+        e: 1 // Embedded (1 = embedded data)
+      });
+    } else {
+      // Add external file reference
+      lottieData.assets.push({
+        id: assetId,
+        w: width,
+        h: height,
+        u: "", // Base path (empty since files are in same directory)
+        p: `${baseName}.png`, // File path
+        e: 0 // Embedded (0 = external file)
+      });
+    }
+  }
 
   // Create a layer for each frame (frame-by-frame animation)
   files.forEach((file, index) => {
@@ -139,10 +159,21 @@ async function createLottieAnimation(files) {
   
   // Write Lottie JSON file
   const lottieFile = path.join(outputDir, "animation.json");
-  fs.writeFileSync(lottieFile, JSON.stringify(lottieData, null, 2));
+  const jsonString = JSON.stringify(lottieData, null, 2);
+  fs.writeFileSync(lottieFile, jsonString);
+  
+  const fileSizeKB = Math.round(jsonString.length / 1024);
+  const containedType = selfContainedLottie ? "self-contained" : "external files";
   
   console.log(`🎬 Lottie animation created: ${lottieFile}`);
   console.log(`📊 Animation specs: ${width}x${height}, ${files.length} frames, ${frameRate}fps, ${(duration/1000).toFixed(1)}s duration`);
+  console.log(`📦 File type: ${containedType}, Size: ${fileSizeKB}KB`);
+  
+  if (selfContainedLottie) {
+    console.log(`✨ Self-contained: All images embedded as base64 - single file deployment!`);
+  } else {
+    console.log(`🔗 External: Requires ${files.length} PNG files in same directory`);
+  }
 }
 
 processImages().catch(console.error);
