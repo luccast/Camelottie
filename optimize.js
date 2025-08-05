@@ -9,6 +9,12 @@ const outputFormat = "png";    // Changed to PNG to avoid WebP dependency issues
 const shouldCreateLottie = true;  // Set to true to generate Lottie animation
 const selfContainedLottie = true; // Set to true for embedded images, false for external files
 
+// Lottie Animation Settings
+const lottieFrameRate = 30;       // Animation frame rate (fps) - 12, 24, 30, 60 are common
+const lottieWidth = null;          // Custom width (null = use optimized image width)
+const lottieHeight = null;        // Custom height (null = use optimized image height)
+const maintainAspectRatio = true; // Keep aspect ratio when scaling dimensions
+
 async function processImages() {
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
 
@@ -71,18 +77,42 @@ async function getImageWidth(filePath) {
 async function createLottieAnimation(files) {
   console.log("🎬 Creating Lottie animation...");
   
-  // Get dimensions from first processed image
-  const firstOutputPath = path.join(outputDir, path.parse(files[0]).name + ".png");
-  const { width, height } = await sharp(firstOutputPath).metadata();
+  // Get original dimensions from first processed image
+  const firstOutputPath = path.join(outputDir, path.parse(files[0]).name + ".png");  
+  const originalMetadata = await sharp(firstOutputPath).metadata();
   
-  // Calculate frame rate and duration
-  const frameRate = 12; // 12 FPS for smooth animation
-  const duration = (files.length / frameRate) * 1000; // Duration in milliseconds
+  // Calculate final Lottie dimensions
+  let width, height;
+  
+  if (lottieWidth && lottieHeight) {
+    // Both dimensions specified
+    width = lottieWidth;
+    height = lottieHeight;
+  } else if (lottieWidth && !lottieHeight) {
+    // Only width specified, calculate height maintaining aspect ratio
+    width = lottieWidth;
+    height = maintainAspectRatio ? 
+      Math.round((lottieWidth / originalMetadata.width) * originalMetadata.height) : 
+      originalMetadata.height;
+  } else if (!lottieWidth && lottieHeight) {
+    // Only height specified, calculate width maintaining aspect ratio
+    height = lottieHeight;
+    width = maintainAspectRatio ? 
+      Math.round((lottieHeight / originalMetadata.height) * originalMetadata.width) : 
+      originalMetadata.width;
+  } else {
+    // Use original optimized image dimensions
+    width = originalMetadata.width;
+    height = originalMetadata.height;
+  }
+  
+  // Calculate duration based on frame rate
+  const duration = (files.length / lottieFrameRate) * 1000; // Duration in milliseconds
   
   // Create Lottie JSON structure
   const lottieData = {
     v: "5.7.4", // Lottie version
-    fr: frameRate, // Frame rate
+    fr: lottieFrameRate, // Frame rate
     ip: 0, // In point (start frame)
     op: files.length, // Out point (end frame) 
     w: width, // Width
@@ -166,7 +196,17 @@ async function createLottieAnimation(files) {
   const containedType = selfContainedLottie ? "self-contained" : "external files";
   
   console.log(`🎬 Lottie animation created: ${lottieFile}`);
-  console.log(`📊 Animation specs: ${width}x${height}, ${files.length} frames, ${frameRate}fps, ${(duration/1000).toFixed(1)}s duration`);
+  console.log(`📊 Animation specs: ${width}x${height}, ${files.length} frames, ${lottieFrameRate}fps, ${(duration/1000).toFixed(1)}s duration`);
+  
+  // Show dimension source
+  if (lottieWidth || lottieHeight) {
+    const customDims = lottieWidth && lottieHeight ? "custom w×h" : 
+                      lottieWidth ? "custom width" : "custom height";
+    console.log(`📐 Dimensions: ${customDims} (original: ${originalMetadata.width}×${originalMetadata.height})`);
+  } else {
+    console.log(`📐 Dimensions: using optimized image size`);
+  }
+  
   console.log(`📦 File type: ${containedType}, Size: ${fileSizeKB}KB`);
   
   if (selfContainedLottie) {
