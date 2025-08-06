@@ -1,6 +1,6 @@
 # Camelottie
 
-A Node.js script for batch image optimization that resizes and compresses PNG files with impressive results.
+A Node.js script for batch image optimization that resizes and compresses PNG files with impressive results. It creates Lottie animations from optimized files.
 
 ## 🚀 Features
 
