@@ -1,4 +1,4 @@
-# Frame Optimizer
+# Camelottie
 
 A Node.js script for batch image optimization that resizes and compresses PNG files with impressive results.
 
@@ -44,7 +44,7 @@ npm install
 ## 📁 Directory Structure
 
 ```
-optimize-frames/
+Camelottie/
 ├── input/          # Place your PNG files here
 ├── output/         # Optimized files will be saved here
 ├── optimize.js     # Main optimization script
