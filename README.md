@@ -47,7 +47,7 @@ npm install
 Camelottie/
 ├── input/          # Place your PNG files here
 ├── output/         # Optimized files will be saved here
-├── optimize.js     # Main optimization script
+├── Camelottie.js   # Main optimization script
 ├── package.json    # Project dependencies
 └── README.md       # This file
 ```
@@ -58,7 +58,7 @@ Camelottie/
 
 2. **Run the optimizer**:
 ```bash
-node optimize.js
+node Camelottie.js
 ```
 
 3. **Check results**: Find optimized images and Lottie animation in the `output/` directory
@@ -85,7 +85,7 @@ import animationData from './output/animation.json';
 
 ## ⚙️ Configuration
 
-You can modify these settings in `optimize.js`:
+You can modify these settings in `Camelottie.js`:
 
 ```javascript
 const inputDir = "input";              // Input directory path
