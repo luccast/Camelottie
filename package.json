@@ -5,7 +5,10 @@
   "main": "Camelottie.js",
   "scripts": {
     "start": "node Camelottie.js",
-    "optimize": "node Camelottie.js"
+    "optimize": "node Camelottie.js",
+    "cli": "node cli.js",
+    "pngs": "node cli.js pngs",
+    "video": "node cli.js video"
   },
   "keywords": [
     "image-optimization",
@@ -22,7 +25,12 @@
     "sharp": "^0.33.0",
     "imagemin": "^8.0.1",
     "imagemin-pngquant": "^9.0.2",
-    "imagemin-webp": "^8.0.0"
+    "imagemin-webp": "^8.0.0",
+    "commander": "^12.0.0",
+    "fluent-ffmpeg": "^2.1.2"
+  },
+  "bin": {
+    "camelottie": "./cli.js"
   },
   "engines": {
     "node": ">=18.0.0"

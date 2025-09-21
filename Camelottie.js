@@ -3,6 +3,54 @@ const fs = require("fs");
 const path = require("path");
 const sharp = require("sharp");
 
+// Video frame extraction function
+async function extractFramesFromVideo(videoPath, outputDir, frameRate = 30) {
+  console.log("🎬 Extracting frames from video...");
+
+  const ffmpeg = require('fluent-ffmpeg');
+
+  return new Promise((resolve, reject) => {
+    // Get video duration first
+    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      const duration = metadata.format.duration;
+      console.log(`📊 Video duration: ${duration.toFixed(1)}s`);
+
+      // Calculate number of frames to extract
+      const numFrames = Math.ceil(duration * frameRate);
+      const frameInterval = 1 / frameRate; // seconds between frames
+
+      console.log(`🎯 Extracting ${numFrames} frames at ${frameRate}fps`);
+
+      let extractedFrames = 0;
+
+      // Extract frames
+      ffmpeg(videoPath)
+        .outputOptions([
+          `-vf fps=${frameRate}`, // Extract at specified frame rate
+          '-q:v 2' // High quality
+        ])
+        .output(path.join(outputDir, 'frame_%06d.png'))
+        .on('progress', (progress) => {
+          extractedFrames = Math.floor(progress.frames);
+          process.stdout.write(`\r📹 Extracted: ${extractedFrames} frames`);
+        })
+        .on('end', () => {
+          console.log(`\n✅ Frame extraction complete: ${extractedFrames} frames`);
+          resolve(extractedFrames);
+        })
+        .on('error', (err) => {
+          reject(err);
+        })
+        .run();
+    });
+  });
+}
+
 const inputDir = "input";       // Folder with original PNGs
 const outputDir = "output/frames";     // Compressed and resized output
 const outputFormat = "webp";   // Using WebP for better compression
@@ -47,10 +95,79 @@ const cropWidth = 237;           // Crop width (null = no cropping, number = cro
 const cropHeight = null;          // Crop height (null = no cropping, number = crop to this height)
 const cropFromCenter = true;      // Crop from center (true) or from top-left (false)
 
-async function processImages() {
-  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
+// Main optimization function with configurable parameters
+async function optimizeImages(config = {}) {
+  const {
+    input,
+    output,
+    tempDir = null,
+    isVideo = false,
+    format = "png",
+    lottieWidth = null,
+    lottieHeight = null,
+    cropWidth = null,
+    cropHeight = null,
+    cropFromCenter = true,
+    lottieFrameRate = 15,
+    originalFrameRate = 30,
+    selfContainedLottie = true,
+    webpQuality = 75
+  } = config;
 
-  const files = fs.readdirSync(inputDir).filter(f => f.endsWith(".png"));
+  // Set global variables for backward compatibility
+  global.inputDir = isVideo ? tempDir : input;
+  global.outputDir = path.join(output, format === "webp" ? "frames" : "frames");
+  global.outputFormat = format;
+  global.shouldCreateLottie = true;
+  global.selfContainedLottie = selfContainedLottie;
+  global.lottieFrameRate = lottieFrameRate;
+  global.originalFrameRate = originalFrameRate;
+  global.lottieWidth = lottieWidth;
+  global.lottieHeight = lottieHeight;
+  global.maintainAspectRatio = true;
+  global.cropWidth = cropWidth;
+  global.cropHeight = cropHeight;
+  global.cropFromCenter = cropFromCenter;
+
+  // WebP settings
+  global.webpSettings = {
+    lossless: false,
+    quality: webpQuality,
+    effort: 6,
+    nearLossless: false
+  };
+
+  // PNG settings
+  global.pngSettings = {
+    quality: [0.7, 0.8],
+    speed: 4,
+    posterize: null
+  };
+
+  if (!fs.existsSync(global.outputDir)) fs.mkdirSync(global.outputDir, { recursive: true });
+
+  let files;
+
+  // Handle video input
+  if (isVideo) {
+    console.log(`🎬 Processing video: ${input}`);
+
+    // Extract frames from video
+    const tempFramesDir = tempDir;
+    await extractFramesFromVideo(input, tempFramesDir, originalFrameRate);
+
+    // Get extracted frames
+    files = fs.readdirSync(tempFramesDir)
+      .filter(f => f.endsWith(".png"))
+      .sort(); // Ensure proper ordering
+
+    console.log(`📁 Found ${files.length} extracted frames`);
+  } else {
+    // Handle PNG directory input
+    console.log(`🖼️  Processing PNG sequence: ${input}`);
+    files = fs.readdirSync(input).filter(f => f.endsWith(".png"));
+    console.log(`📁 Found ${files.length} PNG files`);
+  }
 
   // Dynamic imports for ES modules
   const { default: imagemin } = await import("imagemin");
@@ -58,24 +175,24 @@ async function processImages() {
   const { default: imageminPngquant } = await import("imagemin-pngquant");
 
   for (const file of files) {
-    const inputPath = path.join(inputDir, file);
+    const inputPath = path.join(global.inputDir, file);
     const baseName = path.parse(file).name;
-    const tempExt = outputFormat === "webp" ? ".temp.webp" : ".temp.png";
-    const tempPath = path.join(outputDir, baseName + tempExt);
+    const tempExt = global.outputFormat === "webp" ? ".temp.webp" : ".temp.png";
+    const tempPath = path.join(global.outputDir, baseName + tempExt);
 
     // Resize with Sharp to 33% and convert to desired format
-    if (outputFormat === "webp") {
+    if (global.outputFormat === "webp") {
       const webpOptions = {
-        lossless: webpSettings.lossless,
-        effort: webpSettings.effort,
-        nearLossless: webpSettings.nearLossless
+        lossless: global.webpSettings.lossless,
+        effort: global.webpSettings.effort,
+        nearLossless: global.webpSettings.nearLossless
       };
-      
+
       // Only add quality for lossy WebP
-      if (!webpSettings.lossless) {
-        webpOptions.quality = webpSettings.quality;
+      if (!global.webpSettings.lossless) {
+        webpOptions.quality = global.webpSettings.quality;
       }
-      
+
       await sharp(inputPath)
         .resize({ width: Math.round(await getImageWidth(inputPath) * 0.33) })
         .webp(webpOptions)
@@ -87,30 +204,30 @@ async function processImages() {
     }
 
     let finalPath;
-    
-    if (outputFormat === "webp") {
+
+    if (global.outputFormat === "webp") {
       // For WebP, Sharp already optimized it, so just rename
-      finalPath = path.join(outputDir, baseName + ".webp");
+      finalPath = path.join(global.outputDir, baseName + ".webp");
       fs.renameSync(tempPath, finalPath);
     } else {
       // For PNG, use imagemin compression with custom settings
       const pngquantOptions = {
-        quality: pngSettings.quality,
-        speed: pngSettings.speed
+        quality: global.pngSettings.quality,
+        speed: global.pngSettings.speed
       };
-      
+
       // Add posterize option if specified
-      if (pngSettings.posterize) {
-        pngquantOptions.posterize = pngSettings.posterize;
+      if (global.pngSettings.posterize) {
+        pngquantOptions.posterize = global.pngSettings.posterize;
       }
-      
+
       const plugins = [imageminPngquant(pngquantOptions)];
       const compressed = await imagemin([tempPath], {
-        destination: outputDir,
+        destination: global.outputDir,
         plugins,
       });
-      
-      finalPath = path.join(outputDir, baseName + ".png");
+
+      finalPath = path.join(global.outputDir, baseName + ".png");
       fs.renameSync(compressed[0].destinationPath, finalPath);
     }
 
@@ -126,17 +243,17 @@ async function processImages() {
   }
 
   console.log("✅ All images processed.");
-  
+
   // Display compression settings used
-  if (outputFormat === "webp") {
-    const compressionType = webpSettings.lossless ? "lossless" : `lossy (quality: ${webpSettings.quality})`;
-    console.log(`🔧 WebP settings: ${compressionType}, effort: ${webpSettings.effort}`);
+  if (global.outputFormat === "webp") {
+    const compressionType = global.webpSettings.lossless ? "lossless" : `lossy (quality: ${global.webpSettings.quality})`;
+    console.log(`🔧 WebP settings: ${compressionType}, effort: ${global.webpSettings.effort}`);
   } else {
-    console.log(`🔧 PNG settings: quality: [${pngSettings.quality.join(', ')}], speed: ${pngSettings.speed}`);
+    console.log(`🔧 PNG settings: quality: [${global.pngSettings.quality.join(', ')}], speed: ${global.pngSettings.speed}`);
   }
 
   // Generate Lottie animation if enabled
-  if (shouldCreateLottie) {
+  if (global.shouldCreateLottie) {
     await createLottieAnimation(files);
   }
 }
@@ -150,9 +267,9 @@ async function createLottieAnimation(files) {
   console.log("🎬 Creating Lottie animation...");
   
   // Calculate frame skipping ratio to maintain original animation speed
-  const frameSkipRatio = originalFrameRate / lottieFrameRate;
+  const frameSkipRatio = global.originalFrameRate / global.lottieFrameRate;
   const selectedFrames = [];
-  
+
   // Select frames to include based on frame skip ratio
   for (let i = 0; i < files.length; i += frameSkipRatio) {
     const frameIndex = Math.floor(i);
@@ -164,75 +281,75 @@ async function createLottieAnimation(files) {
       });
     }
   }
-  
+
   console.log(`🎯 Frame selection: ${files.length} original frames → ${selectedFrames.length} selected frames (${frameSkipRatio.toFixed(2)}x skip ratio)`);
-  
+
   // Get original dimensions from first processed image
-  const firstOutputExt = outputFormat === "webp" ? ".webp" : ".png";
-  const firstOutputPath = path.join(outputDir, path.parse(files[0]).name + firstOutputExt);  
+  const firstOutputExt = global.outputFormat === "webp" ? ".webp" : ".png";
+  const firstOutputPath = path.join(global.outputDir, path.parse(files[0]).name + firstOutputExt);
   const originalMetadata = await sharp(firstOutputPath).metadata();
-  
+
   // Apply cropping if specified
   let croppedWidth = originalMetadata.width;
   let croppedHeight = originalMetadata.height;
   let cropOffsetX = 0;
   let cropOffsetY = 0;
-  
-  if (cropWidth || cropHeight) {
+
+  if (global.cropWidth || global.cropHeight) {
     // Calculate crop dimensions
-    croppedWidth = cropWidth || originalMetadata.width;
-    croppedHeight = cropHeight || originalMetadata.height;
-    
+    croppedWidth = global.cropWidth || originalMetadata.width;
+    croppedHeight = global.cropHeight || originalMetadata.height;
+
     // Ensure crop dimensions don't exceed original dimensions
     croppedWidth = Math.min(croppedWidth, originalMetadata.width);
     croppedHeight = Math.min(croppedHeight, originalMetadata.height);
-    
+
     // Calculate crop offset (center or top-left)
-    if (cropFromCenter) {
+    if (global.cropFromCenter) {
       cropOffsetX = Math.floor((originalMetadata.width - croppedWidth) / 2);
       cropOffsetY = Math.floor((originalMetadata.height - croppedHeight) / 2);
     } else {
       cropOffsetX = 0;
       cropOffsetY = 0;
     }
-    
+
     console.log(`✂️  Cropping: ${originalMetadata.width}×${originalMetadata.height} → ${croppedWidth}×${croppedHeight} (offset: ${cropOffsetX},${cropOffsetY})`);
   }
   
   // Calculate final Lottie dimensions
   let width, height;
-  
-  if (lottieWidth && lottieHeight) {
+
+  if (global.lottieWidth && global.lottieHeight) {
     // Both dimensions specified
-    width = lottieWidth;
-    height = lottieHeight;
-  } else if (lottieWidth && !lottieHeight) {
+    width = global.lottieWidth;
+    height = global.lottieHeight;
+  } else if (global.lottieWidth && !global.lottieHeight) {
     // Only width specified, calculate height maintaining aspect ratio
-    width = lottieWidth;
-    height = maintainAspectRatio ? 
-      Math.round((lottieWidth / croppedWidth) * croppedHeight) : 
+    width = global.lottieWidth;
+    height = global.maintainAspectRatio ?
+      Math.round((global.lottieWidth / croppedWidth) * croppedHeight) :
       croppedHeight;
-  } else if (!lottieWidth && lottieHeight) {
+  } else if (!global.lottieWidth && global.lottieHeight) {
     // Only height specified, calculate width maintaining aspect ratio
-    height = lottieHeight;
-    width = maintainAspectRatio ? 
-      Math.round((lottieHeight / croppedHeight) * croppedWidth) : 
+    height = global.lottieHeight;
+    width = global.maintainAspectRatio ?
+      Math.round((global.lottieHeight / croppedHeight) * croppedWidth) :
       croppedWidth;
   } else {
     // Use cropped image dimensions
     width = croppedWidth;
     height = croppedHeight;
   }
-  
+
   // Calculate duration based on ORIGINAL frame count and frame rate to maintain speed
-  const duration = (files.length / originalFrameRate) * 1000; // Duration in milliseconds
-  
+  const duration = (files.length / global.originalFrameRate) * 1000; // Duration in milliseconds
+
   // Create Lottie JSON structure
   const lottieData = {
     v: "5.7.4", // Lottie version
-    fr: lottieFrameRate, // Frame rate
+    fr: global.lottieFrameRate, // Frame rate
     ip: 0, // In point (start frame)
-    op: selectedFrames.length, // Out point (end frame) 
+    op: selectedFrames.length, // Out point (end frame)
     w: width, // Width
     h: height, // Height
     nm: "Frame Animation", // Name
@@ -245,29 +362,29 @@ async function createLottieAnimation(files) {
   for (const frameData of selectedFrames) {
     const baseName = path.parse(frameData.file).name;
     const assetId = `image_${frameData.lottieIndex}`;
-    const imageExt = outputFormat === "webp" ? ".webp" : ".png";
-    const imagePath = path.join(outputDir, `${baseName}${imageExt}`);
-    
-    if (selfContainedLottie) {
+    const imageExt = global.outputFormat === "webp" ? ".webp" : ".png";
+    const imagePath = path.join(global.outputDir, `${baseName}${imageExt}`);
+
+    if (global.selfContainedLottie) {
       // Read and process image with cropping if needed
       let imageBuffer;
-      if (cropWidth || cropHeight) {
+      if (global.cropWidth || global.cropHeight) {
         // Apply crop using Sharp
         imageBuffer = await sharp(imagePath)
-          .extract({ 
-            left: cropOffsetX, 
-            top: cropOffsetY, 
-            width: croppedWidth, 
-            height: croppedHeight 
+          .extract({
+            left: cropOffsetX,
+            top: cropOffsetY,
+            width: croppedWidth,
+            height: croppedHeight
           })
           .toBuffer();
       } else {
         // No cropping, read original
         imageBuffer = fs.readFileSync(imagePath);
       }
-      
+
       const base64Data = imageBuffer.toString('base64');
-      const mimeType = outputFormat === "webp" ? "image/webp" : "image/png";
+      const mimeType = global.outputFormat === "webp" ? "image/webp" : "image/png";
       const dataUri = `data:${mimeType};base64,${base64Data}`;
       
       // Add embedded asset to array
@@ -281,18 +398,18 @@ async function createLottieAnimation(files) {
       });
     } else {
       // For external files, we need to create cropped versions
-      if (cropWidth || cropHeight) {
+      if (global.cropWidth || global.cropHeight) {
         // Create cropped version for external files
-        const croppedImagePath = path.join(outputDir, `${baseName}_cropped${imageExt}`);
+        const croppedImagePath = path.join(global.outputDir, `${baseName}_cropped${imageExt}`);
         await sharp(imagePath)
-          .extract({ 
-            left: cropOffsetX, 
-            top: cropOffsetY, 
-            width: croppedWidth, 
-            height: croppedHeight 
+          .extract({
+            left: cropOffsetX,
+            top: cropOffsetY,
+            width: croppedWidth,
+            height: croppedHeight
           })
           .toFile(croppedImagePath);
-        
+
         // Add external file reference to cropped version
         lottieData.assets.push({
           id: assetId,
@@ -346,36 +463,58 @@ async function createLottieAnimation(files) {
   });
   
   // Write Lottie JSON file (in parent output directory)
-  const lottieFile = path.join(path.dirname(outputDir), "animation.json");
+  const lottieFile = path.join(path.dirname(global.outputDir), "animation.json");
   const jsonString = JSON.stringify(lottieData, null, 2);
   fs.writeFileSync(lottieFile, jsonString);
   
   const fileSizeKB = Math.round(jsonString.length / 1024);
-  const containedType = selfContainedLottie ? "self-contained" : "external files";
+  const containedType = global.selfContainedLottie ? "self-contained" : "external files";
   
   console.log(`🎬 Lottie animation created: ${lottieFile}`);
-  console.log(`📊 Animation specs: ${width}x${height}, ${selectedFrames.length} frames, ${lottieFrameRate}fps, ${(duration/1000).toFixed(1)}s duration`);
-  console.log(`⚡ Speed maintained: Original ${originalFrameRate}fps → ${lottieFrameRate}fps (${frameSkipRatio.toFixed(2)}x frame skip)`);
-  
+  console.log(`📊 Animation specs: ${width}x${height}, ${selectedFrames.length} frames, ${global.lottieFrameRate}fps, ${(duration/1000).toFixed(1)}s duration`);
+  console.log(`⚡ Speed maintained: Original ${global.originalFrameRate}fps → ${global.lottieFrameRate}fps (${frameSkipRatio.toFixed(2)}x frame skip)`);
+
   // Show dimension source
-  if (lottieWidth || lottieHeight) {
-    const customDims = lottieWidth && lottieHeight ? "custom w×h" : 
-                      lottieWidth ? "custom width" : "custom height";
-    const cropInfo = (cropWidth || cropHeight) ? ` (cropped from ${originalMetadata.width}×${originalMetadata.height})` : "";
+  if (global.lottieWidth || global.lottieHeight) {
+    const customDims = global.lottieWidth && global.lottieHeight ? "custom w×h" :
+                      global.lottieWidth ? "custom width" : "custom height";
+    const cropInfo = (global.cropWidth || global.cropHeight) ? ` (cropped from ${originalMetadata.width}×${originalMetadata.height})` : "";
     console.log(`📐 Dimensions: ${customDims}${cropInfo}`);
-  } else if (cropWidth || cropHeight) {
+  } else if (global.cropWidth || global.cropHeight) {
     console.log(`📐 Dimensions: using cropped size (${originalMetadata.width}×${originalMetadata.height} → ${croppedWidth}×${croppedHeight})`);
   } else {
     console.log(`📐 Dimensions: using optimized image size`);
   }
-  
+
   console.log(`📦 File type: ${containedType}, Size: ${fileSizeKB}KB`);
-  
-  if (selfContainedLottie) {
+
+  if (global.selfContainedLottie) {
     console.log(`✨ Self-contained: All images embedded as base64 - single file deployment!`);
   } else {
     console.log(`🔗 External: Requires ${selectedFrames.length} PNG files in same directory`);
   }
 }
 
-processImages().catch(console.error);
+// Export the main function for CLI usage
+module.exports = { optimizeImages };
+
+// For backward compatibility, run with default config if called directly
+if (require.main === module) {
+  // Default configuration for backward compatibility
+  const defaultConfig = {
+    input: inputDir,
+    output: path.dirname(outputDir),
+    isVideo: false,
+    format: outputFormat,
+    lottieWidth: lottieWidth,
+    lottieHeight: lottieHeight,
+    cropWidth: cropWidth,
+    cropHeight: cropHeight,
+    cropFromCenter: cropFromCenter,
+    lottieFrameRate: lottieFrameRate,
+    originalFrameRate: originalFrameRate,
+    selfContainedLottie: selfContainedLottie
+  };
+
+  optimizeImages(defaultConfig).catch(console.error);
+}
