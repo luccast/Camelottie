@@ -36,8 +36,9 @@ const pngSettings = {
 };
 
 // Lottie Animation Settings
-const lottieFrameRate = 30;       // Animation frame rate (fps) - 12, 24, 30, 60 are common
-const lottieWidth = 280;          // Custom width (null = use optimized image width)
+const lottieFrameRate = 15;       // Animation frame rate (fps) - 12, 15, 24, 30, 60 are common
+const originalFrameRate = 30;     // Original frame rate of the input animation
+const lottieWidth = 200;          // Custom width (null = use optimized image width)
 const lottieHeight = null;        // Custom height (null = use optimized image height)
 const maintainAspectRatio = true; // Keep aspect ratio when scaling dimensions
 
@@ -143,6 +144,24 @@ async function getImageWidth(filePath) {
 async function createLottieAnimation(files) {
   console.log("🎬 Creating Lottie animation...");
   
+  // Calculate frame skipping ratio to maintain original animation speed
+  const frameSkipRatio = originalFrameRate / lottieFrameRate;
+  const selectedFrames = [];
+  
+  // Select frames to include based on frame skip ratio
+  for (let i = 0; i < files.length; i += frameSkipRatio) {
+    const frameIndex = Math.floor(i);
+    if (frameIndex < files.length) {
+      selectedFrames.push({
+        originalIndex: frameIndex,
+        file: files[frameIndex],
+        lottieIndex: selectedFrames.length
+      });
+    }
+  }
+  
+  console.log(`🎯 Frame selection: ${files.length} original frames → ${selectedFrames.length} selected frames (${frameSkipRatio.toFixed(2)}x skip ratio)`);
+  
   // Get original dimensions from first processed image
   const firstOutputExt = outputFormat === "webp" ? ".webp" : ".png";
   const firstOutputPath = path.join(outputDir, path.parse(files[0]).name + firstOutputExt);  
@@ -173,15 +192,15 @@ async function createLottieAnimation(files) {
     height = originalMetadata.height;
   }
   
-  // Calculate duration based on frame rate
-  const duration = (files.length / lottieFrameRate) * 1000; // Duration in milliseconds
+  // Calculate duration based on ORIGINAL frame count and frame rate to maintain speed
+  const duration = (files.length / originalFrameRate) * 1000; // Duration in milliseconds
   
   // Create Lottie JSON structure
   const lottieData = {
     v: "5.7.4", // Lottie version
     fr: lottieFrameRate, // Frame rate
     ip: 0, // In point (start frame)
-    op: files.length, // Out point (end frame) 
+    op: selectedFrames.length, // Out point (end frame) 
     w: width, // Width
     h: height, // Height
     nm: "Frame Animation", // Name
@@ -190,11 +209,10 @@ async function createLottieAnimation(files) {
     layers: [] // Animation layers
   };
 
-  // Add each image as an asset
-  for (let index = 0; index < files.length; index++) {
-    const file = files[index];
-    const baseName = path.parse(file).name;
-    const assetId = `image_${index}`;
+  // Add each selected image as an asset
+  for (const frameData of selectedFrames) {
+    const baseName = path.parse(frameData.file).name;
+    const assetId = `image_${frameData.lottieIndex}`;
     const imageExt = outputFormat === "webp" ? ".webp" : ".png";
     const imagePath = path.join(outputDir, `${baseName}${imageExt}`);
     
@@ -227,16 +245,16 @@ async function createLottieAnimation(files) {
     }
   }
 
-  // Create a layer for each frame (frame-by-frame animation)
-  files.forEach((file, index) => {
-    const baseName = path.parse(file).name;
-    const assetId = `image_${index}`;
+  // Create a layer for each selected frame (frame-by-frame animation)
+  selectedFrames.forEach((frameData, lottieIndex) => {
+    const baseName = path.parse(frameData.file).name;
+    const assetId = `image_${lottieIndex}`;
     
     const imageLayer = {
       ddd: 0,
-      ind: index + 1, // Layer index (1-based)
+      ind: lottieIndex + 1, // Layer index (1-based)
       ty: 2, // Layer type (2 = image)
-      nm: `Frame ${index + 1}`, // Layer name
+      nm: `Frame ${frameData.originalIndex + 1}`, // Layer name (original frame number)
       refId: assetId, // Reference to asset
       sr: 1, // Stretch ratio
       ks: { // Transform properties
@@ -247,8 +265,8 @@ async function createLottieAnimation(files) {
         s: { a: 0, k: [100, 100, 100] } // Scale
       },
       ao: 0, // Auto-orient
-      ip: index, // In point (when this frame starts)
-      op: index + 1, // Out point (when this frame ends)
+      ip: lottieIndex, // In point (when this frame starts)
+      op: lottieIndex + 1, // Out point (when this frame ends)
       st: 0, // Start time
       bm: 0 // Blend mode
     };
@@ -265,7 +283,8 @@ async function createLottieAnimation(files) {
   const containedType = selfContainedLottie ? "self-contained" : "external files";
   
   console.log(`🎬 Lottie animation created: ${lottieFile}`);
-  console.log(`📊 Animation specs: ${width}x${height}, ${files.length} frames, ${lottieFrameRate}fps, ${(duration/1000).toFixed(1)}s duration`);
+  console.log(`📊 Animation specs: ${width}x${height}, ${selectedFrames.length} frames, ${lottieFrameRate}fps, ${(duration/1000).toFixed(1)}s duration`);
+  console.log(`⚡ Speed maintained: Original ${originalFrameRate}fps → ${lottieFrameRate}fps (${frameSkipRatio.toFixed(2)}x frame skip)`);
   
   // Show dimension source
   if (lottieWidth || lottieHeight) {
@@ -281,7 +300,7 @@ async function createLottieAnimation(files) {
   if (selfContainedLottie) {
     console.log(`✨ Self-contained: All images embedded as base64 - single file deployment!`);
   } else {
-    console.log(`🔗 External: Requires ${files.length} PNG files in same directory`);
+    console.log(`🔗 External: Requires ${selectedFrames.length} PNG files in same directory`);
   }
 }
 
