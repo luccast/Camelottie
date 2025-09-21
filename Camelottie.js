@@ -42,6 +42,11 @@ const lottieWidth = 200;          // Custom width (null = use optimized image wi
 const lottieHeight = null;        // Custom height (null = use optimized image height)
 const maintainAspectRatio = true; // Keep aspect ratio when scaling dimensions
 
+// Crop Settings
+const cropWidth = 237;           // Crop width (null = no cropping, number = crop to this width)
+const cropHeight = null;          // Crop height (null = no cropping, number = crop to this height)
+const cropFromCenter = true;      // Crop from center (true) or from top-left (false)
+
 async function processImages() {
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
 
@@ -167,6 +172,33 @@ async function createLottieAnimation(files) {
   const firstOutputPath = path.join(outputDir, path.parse(files[0]).name + firstOutputExt);  
   const originalMetadata = await sharp(firstOutputPath).metadata();
   
+  // Apply cropping if specified
+  let croppedWidth = originalMetadata.width;
+  let croppedHeight = originalMetadata.height;
+  let cropOffsetX = 0;
+  let cropOffsetY = 0;
+  
+  if (cropWidth || cropHeight) {
+    // Calculate crop dimensions
+    croppedWidth = cropWidth || originalMetadata.width;
+    croppedHeight = cropHeight || originalMetadata.height;
+    
+    // Ensure crop dimensions don't exceed original dimensions
+    croppedWidth = Math.min(croppedWidth, originalMetadata.width);
+    croppedHeight = Math.min(croppedHeight, originalMetadata.height);
+    
+    // Calculate crop offset (center or top-left)
+    if (cropFromCenter) {
+      cropOffsetX = Math.floor((originalMetadata.width - croppedWidth) / 2);
+      cropOffsetY = Math.floor((originalMetadata.height - croppedHeight) / 2);
+    } else {
+      cropOffsetX = 0;
+      cropOffsetY = 0;
+    }
+    
+    console.log(`✂️  Cropping: ${originalMetadata.width}×${originalMetadata.height} → ${croppedWidth}×${croppedHeight} (offset: ${cropOffsetX},${cropOffsetY})`);
+  }
+  
   // Calculate final Lottie dimensions
   let width, height;
   
@@ -178,18 +210,18 @@ async function createLottieAnimation(files) {
     // Only width specified, calculate height maintaining aspect ratio
     width = lottieWidth;
     height = maintainAspectRatio ? 
-      Math.round((lottieWidth / originalMetadata.width) * originalMetadata.height) : 
-      originalMetadata.height;
+      Math.round((lottieWidth / croppedWidth) * croppedHeight) : 
+      croppedHeight;
   } else if (!lottieWidth && lottieHeight) {
     // Only height specified, calculate width maintaining aspect ratio
     height = lottieHeight;
     width = maintainAspectRatio ? 
-      Math.round((lottieHeight / originalMetadata.height) * originalMetadata.width) : 
-      originalMetadata.width;
+      Math.round((lottieHeight / croppedHeight) * croppedWidth) : 
+      croppedWidth;
   } else {
-    // Use original optimized image dimensions
-    width = originalMetadata.width;
-    height = originalMetadata.height;
+    // Use cropped image dimensions
+    width = croppedWidth;
+    height = croppedHeight;
   }
   
   // Calculate duration based on ORIGINAL frame count and frame rate to maintain speed
@@ -217,8 +249,23 @@ async function createLottieAnimation(files) {
     const imagePath = path.join(outputDir, `${baseName}${imageExt}`);
     
     if (selfContainedLottie) {
-      // Read and encode image as base64
-      const imageBuffer = fs.readFileSync(imagePath);
+      // Read and process image with cropping if needed
+      let imageBuffer;
+      if (cropWidth || cropHeight) {
+        // Apply crop using Sharp
+        imageBuffer = await sharp(imagePath)
+          .extract({ 
+            left: cropOffsetX, 
+            top: cropOffsetY, 
+            width: croppedWidth, 
+            height: croppedHeight 
+          })
+          .toBuffer();
+      } else {
+        // No cropping, read original
+        imageBuffer = fs.readFileSync(imagePath);
+      }
+      
       const base64Data = imageBuffer.toString('base64');
       const mimeType = outputFormat === "webp" ? "image/webp" : "image/png";
       const dataUri = `data:${mimeType};base64,${base64Data}`;
@@ -233,15 +280,39 @@ async function createLottieAnimation(files) {
         e: 1 // Embedded (1 = embedded data)
       });
     } else {
-      // Add external file reference
-      lottieData.assets.push({
-        id: assetId,
-        w: width,
-        h: height,
-        u: "", // Base path (empty since files are in same directory)
-        p: `${baseName}${imageExt}`, // File path
-        e: 0 // Embedded (0 = external file)
-      });
+      // For external files, we need to create cropped versions
+      if (cropWidth || cropHeight) {
+        // Create cropped version for external files
+        const croppedImagePath = path.join(outputDir, `${baseName}_cropped${imageExt}`);
+        await sharp(imagePath)
+          .extract({ 
+            left: cropOffsetX, 
+            top: cropOffsetY, 
+            width: croppedWidth, 
+            height: croppedHeight 
+          })
+          .toFile(croppedImagePath);
+        
+        // Add external file reference to cropped version
+        lottieData.assets.push({
+          id: assetId,
+          w: width,
+          h: height,
+          u: "", // Base path (empty since files are in same directory)
+          p: `${baseName}_cropped${imageExt}`, // File path
+          e: 0 // Embedded (0 = external file)
+        });
+      } else {
+        // No cropping needed, use original
+        lottieData.assets.push({
+          id: assetId,
+          w: width,
+          h: height,
+          u: "", // Base path (empty since files are in same directory)
+          p: `${baseName}${imageExt}`, // File path
+          e: 0 // Embedded (0 = external file)
+        });
+      }
     }
   }
 
@@ -290,7 +361,10 @@ async function createLottieAnimation(files) {
   if (lottieWidth || lottieHeight) {
     const customDims = lottieWidth && lottieHeight ? "custom w×h" : 
                       lottieWidth ? "custom width" : "custom height";
-    console.log(`📐 Dimensions: ${customDims} (original: ${originalMetadata.width}×${originalMetadata.height})`);
+    const cropInfo = (cropWidth || cropHeight) ? ` (cropped from ${originalMetadata.width}×${originalMetadata.height})` : "";
+    console.log(`📐 Dimensions: ${customDims}${cropInfo}`);
+  } else if (cropWidth || cropHeight) {
+    console.log(`📐 Dimensions: using cropped size (${originalMetadata.width}×${originalMetadata.height} → ${croppedWidth}×${croppedHeight})`);
   } else {
     console.log(`📐 Dimensions: using optimized image size`);
   }

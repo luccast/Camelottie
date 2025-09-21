@@ -92,7 +92,13 @@ const inputDir = "input";              // Input directory path
 const outputDir = "output";            // Output directory path  
 const outputFormat = "png";            // Output format ("png" or "webp")
 const shouldCreateLottie = true;       // Generate Lottie animation (true/false)
-const frameRate = 12;                  // Animation frame rate (fps)
+const lottieFrameRate = 15;            // Animation frame rate (fps)
+const originalFrameRate = 30;          // Original frame rate of input animation
+const lottieWidth = 200;               // Custom Lottie width (null = auto)
+const lottieHeight = null;             // Custom Lottie height (null = auto)
+const cropWidth = null;                // Crop width (null = no cropping)
+const cropHeight = null;               // Crop height (null = no cropping)
+const cropFromCenter = true;           // Crop from center (true) or top-left (false)
 ```
 
 ### Resize Factor
@@ -106,6 +112,29 @@ PNG compression uses pngquant with quality range 0.6-0.8:
 ```javascript
 [imageminPngquant({ quality: [0.6, 0.8] })]
 ```
+
+### Cropping
+Crop the Lottie animation to focus on specific areas. **Cropping is applied to the original PNG image dimensions, not the final Lottie dimensions.**
+
+```javascript
+const cropWidth = 150;        // Crop to 150px width
+const cropHeight = 200;       // Crop to 200px height  
+const cropFromCenter = true;  // Crop from center (true) or top-left (false)
+```
+
+**Processing Flow:**
+1. Original PNG: 600×800px
+2. Crop: 300×400px (from center) 
+3. Lottie base: 300×400px
+4. Scale (if lottieWidth=200): 200×267px (maintaining aspect ratio)
+
+**Cropping Examples:**
+- `cropWidth: 150, cropHeight: null` - Crop to 150px width, auto height
+- `cropWidth: null, cropHeight: 200` - Crop to 200px height, auto width
+- `cropWidth: 150, cropHeight: 200` - Crop to exactly 150×200px
+- `cropFromCenter: false` - Crop from top-left corner instead of center
+
+**Important:** Crop dimensions are applied to the original optimized PNG files, then the Lottie animation is created from those cropped images, and finally scaled if you specify custom Lottie dimensions.
 
 ## 🔧 Dependencies
 
