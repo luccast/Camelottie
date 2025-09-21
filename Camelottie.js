@@ -132,7 +132,7 @@ async function optimizeImages(config = {}) {
   // WebP settings
   global.webpSettings = {
     lossless: false,
-    quality: webpQuality,
+    quality: Math.max(0, Math.min(100, parseInt(webpQuality) || 75)),
     effort: 6,
     nearLossless: false
   };
